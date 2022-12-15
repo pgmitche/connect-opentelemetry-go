@@ -1359,3 +1359,263 @@ func metricResource() *resource.Resource {
 		attribute.String("telemetry.sdk.version", "1.11.1"),
 	)
 }
+
+// TODO: Streaming tests
+
+func TestStreamingClientInterceptors(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+
+	pingClient, host, port := startServer([]connect.HandlerOption{
+		WithTelemetry(WithTracerProvider(traceProvider)),
+	}, []connect.ClientOption{
+		WithTelemetry(WithTracerProvider(clientTraceProvider)),
+	}, happyPingServer())
+
+	conn := pingClient.Sum(context.Background())
+	if err := conn.Send(&pingv1.SumRequest{Number: 1}); err != nil {
+		t.Errorf(err.Error())
+	}
+	if err := conn.Send(&pingv1.SumRequest{Number: 2}); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	if _, err := conn.CloseAndReceive(); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	conn2 := pingClient.Sum(context.Background())
+	if err := conn2.Send(&pingv1.SumRequest{Number: 2}); err != nil {
+		t.Errorf(err.Error())
+	}
+	if err := conn2.Send(&pingv1.SumRequest{Number: 4}); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	if _, err := conn2.CloseAndReceive(); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	checkSpans(t, []wantSpans{
+		{
+			spanName: "observability.ping.v1.PingService/Sum",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"), // RESPONSE
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String("buf_connect"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Sum"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
+			},
+		},
+		{
+			spanName: "observability.ping.v1.PingService/Sum",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"), // RESPONSE
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(0),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(0),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String("buf_connect"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Sum"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
+			},
+		},
+	}, clientSpanRecorder.Ended())
+
+	checkSpans(t, []wantSpans{
+		{
+			spanName: "observability.ping.v1.PingService/Sum",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"), // Response
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"), // Close
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String("buf_connect"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Sum"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
+			},
+		},
+		{
+			spanName: "observability.ping.v1.PingService/Sum",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"), // Response
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				}, {
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"), // Close
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String("buf_connect"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Sum"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func checkSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
+	t.Helper()
+	if len(want) != len(got) {
+		t.Errorf("unexpected spans: want %d spans, got %d", len(want), len(got))
+	}
+	for i, span := range got {
+		wantEvents := want[i].events
+		wantAttributes := want[i].attrs
+		if span.EndTime().IsZero() {
+			t.Fail()
+		}
+		if span.Name() != want[i].spanName {
+			t.Errorf("span name not %s", want[i].spanName)
+		}
+		gotEvents := span.Events()
+		if len(wantEvents) != len(gotEvents) {
+			t.Error("event lengths do not match")
+		}
+		for i, e := range wantEvents {
+			if e.Name != gotEvents[i].Name {
+				t.Error("names do not match")
+			}
+			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes,
+				cmp.Comparer(func(x, y attribute.KeyValue) bool {
+					return x.Value == y.Value && x.Key == y.Key
+				}))
+			if diff != "" {
+				t.Error(diff)
+			}
+		}
+		diff := cmp.Diff(wantAttributes, span.Attributes(),
+			cmpopts.IgnoreUnexported(attribute.Value{}),
+			cmp.Comparer(func(x, y attribute.KeyValue) bool {
+				if x.Key == semconv.NetPeerPortKey && y.Key == semconv.NetPeerPortKey {
+					return true
+				}
+				return x.Key == y.Key && x.Value == y.Value
+			},
+			))
+		if diff != "" {
+			t.Error(diff)
+		}
+	}
+}

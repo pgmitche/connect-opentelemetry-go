@@ -36,6 +36,32 @@ func pingFail(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*con
 	return nil, connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))
 }
 
+func sumHappy(
+	ctx context.Context,
+	stream *connect.ClientStream[pingv1.SumRequest],
+) (*connect.Response[pingv1.SumResponse], error) {
+	var sum int64
+	for stream.Receive() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		sum += stream.Msg().Number
+	}
+
+	err := stream.Err()
+	if err != nil && errors.Is(err, io.EOF) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("receive request: %w", err)
+	}
+
+	res := connect.NewResponse(&pingv1.SumResponse{
+		Sum: sum,
+	})
+
+	return res, nil
+}
+
 func cumSumHappy(
 	ctx context.Context,
 	stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse],
@@ -82,6 +108,7 @@ func cumSumFail(
 func happyPingServer() *pluggablePingServer {
 	return &pluggablePingServer{
 		ping:   pingHappy,
+		sum:    sumHappy,
 		cumSum: cumSumHappy,
 	}
 }
@@ -93,10 +120,13 @@ func failPingServer() *pluggablePingServer {
 	}
 }
 
+var _ pingv1connect.PingServiceHandler = &pluggablePingServer{}
+
 type pluggablePingServer struct {
 	pingv1connect.UnimplementedPingServiceHandler
 
 	ping   func(context.Context, *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error)
+	sum    func(context.Context, *connect.ClientStream[pingv1.SumRequest]) (*connect.Response[pingv1.SumResponse], error)
 	cumSum func(context.Context, *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error
 }
 
@@ -112,4 +142,11 @@ func (p *pluggablePingServer) CumSum(
 	stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse],
 ) error {
 	return p.cumSum(ctx, stream)
+}
+
+func (p *pluggablePingServer) Sum(
+	ctx context.Context,
+	stream *connect.ClientStream[pingv1.SumRequest],
+) (*connect.Response[pingv1.SumResponse], error) {
+	return p.sum(ctx, stream)
 }
