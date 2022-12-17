@@ -1362,7 +1362,7 @@ func metricResource() *resource.Resource {
 
 // TODO: Streaming tests
 
-func TestStreamingClientInterceptors(t *testing.T) {
+func TestStreamingInterceptors(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -1428,9 +1428,8 @@ func TestStreamingClientInterceptors(t *testing.T) {
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED
+						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
 						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 			},
@@ -1465,14 +1464,13 @@ func TestStreamingClientInterceptors(t *testing.T) {
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"), // RESPONSE
 						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(0),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED
+						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
 						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(0),
 					},
 				},
 			},
@@ -1508,14 +1506,13 @@ func TestStreamingClientInterceptors(t *testing.T) {
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"), // Response
+						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
 						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"), // Close
+						semconv.MessageTypeKey.String("SENT"), // Response
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1550,14 +1547,13 @@ func TestStreamingClientInterceptors(t *testing.T) {
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"), // Response
+						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
 						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"), // Close
+						semconv.MessageTypeKey.String("SENT"), // Response
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},

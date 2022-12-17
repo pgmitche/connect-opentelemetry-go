@@ -17,7 +17,9 @@ package otelconnect
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel/propagation"
 	"io"
+	"net/http"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -25,9 +27,10 @@ import (
 )
 
 type streamingState struct {
-	protocol string
-	mu       sync.Mutex
-	attrs    []attribute.KeyValue
+	protocol   string
+	mu         sync.Mutex
+	attrs      []attribute.KeyValue
+	headerLock sync.Once
 }
 
 type sendReceiver interface {
@@ -63,4 +66,11 @@ func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, 
 		instr.responseSize.Record(ctx, int64(size), s.attrs...)
 	}
 	return err
+}
+
+func (s *streamingState) setHeadersOnce(ctx context.Context, header http.Header, p propagation.TextMapPropagator) {
+	// propagate the span in the outgoing request
+	s.headerLock.Do(func() {
+		p.Inject(ctx, propagation.HeaderCarrier(header))
+	})
 }
