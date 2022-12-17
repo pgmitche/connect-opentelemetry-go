@@ -16,30 +16,62 @@ package otelconnect
 
 import (
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 	"sync"
 
 	"github.com/bufbuild/connect-go"
 )
 
+var (
+	recvSpanType = semconv.MessageTypeKey.String("RECEIVED")
+	sendSpanType = semconv.MessageTypeKey.String("SENT")
+)
+
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
 
-	receive func(any, connect.StreamingClientConn) error
-	send    func(any, connect.StreamingClientConn) error
 	onClose func()
 
 	mu             sync.Mutex
 	requestClosed  bool
 	responseClosed bool
 	onCloseCalled  bool
+
+	rcvMsgID  int
+	sendMsgID int
+	span      trace.Span
+	state     *streamingState
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
-	return s.receive(msg, s.StreamingClientConn)
+	err := s.state.receive(msg, s.StreamingClientConn)
+	s.rcvMsgID++
+	recvSpanAttrs := []attribute.KeyValue{recvSpanType, semconv.MessageIDKey.Int(s.rcvMsgID)}
+	if err == nil {
+		if pmsg, ok := msg.(proto.Message); ok {
+			size := proto.Size(pmsg)
+			recvSpanAttrs = append(recvSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
+		}
+	}
+	s.span.AddEvent("message", trace.WithAttributes(recvSpanAttrs...))
+	return err
 }
 
 func (s *streamingClientInterceptor) Send(msg any) error {
-	return s.send(msg, s.StreamingClientConn)
+	err := s.state.send(msg, s.StreamingClientConn)
+	s.sendMsgID++
+	sendSpanAttrs := []attribute.KeyValue{sendSpanType, semconv.MessageIDKey.Int(s.sendMsgID)}
+	if err == nil {
+		if pmsg, ok := msg.(proto.Message); ok {
+			size := proto.Size(pmsg)
+			sendSpanAttrs = append(sendSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
+		}
+	}
+	s.span.AddEvent("message", trace.WithAttributes(sendSpanAttrs...))
+	return err
 }
 
 func (s *streamingClientInterceptor) CloseRequest() error {
@@ -102,15 +134,36 @@ func (e *errorStreamingClientInterceptor) CloseResponse() error {
 
 type streamingHandlerInterceptor struct {
 	connect.StreamingHandlerConn
-
-	receive func(any, connect.StreamingHandlerConn) error
-	send    func(any, connect.StreamingHandlerConn) error
+	span      trace.Span
+	state     *streamingState
+	rcvMsgID  int
+	sendMsgID int
 }
 
 func (p *streamingHandlerInterceptor) Receive(msg any) error {
-	return p.receive(msg, p.StreamingHandlerConn)
+	err := p.state.receive(msg, p.StreamingHandlerConn)
+	p.rcvMsgID++
+	recvSpanAttrs := []attribute.KeyValue{recvSpanType, semconv.MessageIDKey.Int(p.rcvMsgID)}
+	if err == nil {
+		if pmsg, ok := msg.(proto.Message); ok {
+			size := proto.Size(pmsg)
+			recvSpanAttrs = append(recvSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
+		}
+	}
+	p.span.AddEvent("message", trace.WithAttributes(recvSpanAttrs...))
+	return err
 }
 
 func (p *streamingHandlerInterceptor) Send(msg any) error {
-	return p.send(msg, p.StreamingHandlerConn)
+	err := p.state.send(msg, p.StreamingHandlerConn)
+	p.sendMsgID++
+	sendSpanAttrs := []attribute.KeyValue{sendSpanType, semconv.MessageIDKey.Int(p.sendMsgID)}
+	if err == nil {
+		if pmsg, ok := msg.(proto.Message); ok {
+			size := proto.Size(pmsg)
+			sendSpanAttrs = append(sendSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
+		}
+	}
+	p.span.AddEvent("message", trace.WithAttributes(sendSpanAttrs...))
+	return err
 }

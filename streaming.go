@@ -27,6 +27,8 @@ import (
 )
 
 type streamingState struct {
+	ctx        context.Context
+	instr      *instruments
 	protocol   string
 	mu         sync.Mutex
 	attrs      []attribute.KeyValue
@@ -38,7 +40,7 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
+func (s *streamingState) receive(msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -47,14 +49,14 @@ func (s *streamingState) receive(ctx context.Context, instr *instruments, msg an
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		instr.requestSize.Record(ctx, int64(size), s.attrs...)
+		s.instr.requestSize.Record(s.ctx, int64(size), s.attrs...)
 	}
-	instr.requestsPerRPC.Record(ctx, 1, s.attrs...)
-	instr.responsesPerRPC.Record(ctx, 1, s.attrs...)
+	s.instr.requestsPerRPC.Record(s.ctx, 1, s.attrs...)
+	s.instr.responsesPerRPC.Record(s.ctx, 1, s.attrs...)
 	return err
 }
 
-func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
+func (s *streamingState) send(msg any, conn sendReceiver) error {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -63,14 +65,14 @@ func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, 
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		instr.responseSize.Record(ctx, int64(size), s.attrs...)
+		s.instr.responseSize.Record(s.ctx, int64(size), s.attrs...)
 	}
 	return err
 }
 
-func (s *streamingState) setHeadersOnce(ctx context.Context, header http.Header, p propagation.TextMapPropagator) {
+func (s *streamingState) setHeadersOnce(header http.Header, p propagation.TextMapPropagator) {
 	// propagate the span in the outgoing request
 	s.headerLock.Do(func() {
-		p.Inject(ctx, propagation.HeaderCarrier(header))
+		p.Inject(s.ctx, propagation.HeaderCarrier(header))
 	})
 }

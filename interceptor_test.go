@@ -1415,7 +1415,7 @@ func TestStreamingInterceptors(t *testing.T) {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("SENT"),
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(2),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
@@ -1429,7 +1429,7 @@ func TestStreamingInterceptors(t *testing.T) {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(2),
 					},
 				},
 			},
@@ -1456,7 +1456,7 @@ func TestStreamingInterceptors(t *testing.T) {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("SENT"),
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(2),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
@@ -1470,7 +1470,7 @@ func TestStreamingInterceptors(t *testing.T) {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(2),
 					},
 				},
 			},
@@ -1500,14 +1500,14 @@ func TestStreamingInterceptors(t *testing.T) {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"),
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(2),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(3),
 					},
 				}, {
 					Name: "message",
@@ -1541,14 +1541,14 @@ func TestStreamingInterceptors(t *testing.T) {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"),
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(2),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				}, {
 					Name: "message",
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String("RECEIVED"), // CLOSED, so no size
-						semconv.MessageIDKey.Int(1),
+						semconv.MessageIDKey.Int(3),
 					},
 				}, {
 					Name: "message",
